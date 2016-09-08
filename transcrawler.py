@@ -15,9 +15,8 @@ MINERVA_HOME = 'https://horizon.mcgill.ca/pban1/twbkwbis.P_WWWLogin'
 MINERVA_TRANSCRIPT = 'https://horizon.mcgill.ca/pban1/bzsktran.P_Display_Form?user_type=S&tran_type=V'
 MINERVA_LOGOUT = 'https://horizon.mcgill.ca/pban1/twbkwbis.P_Logout'
 
+# delay is in seconds
 DELAY = 30 * 60
-
-rows_len = 0
 
 log.basicConfig(filename='transcrawler.log', level=log.INFO,
                 format='%(asctime)s - %(levelname)s : %(message)s',
@@ -52,8 +51,8 @@ def send_mail(receivers, receiver_names, message,
              receiver_names[0], receivers[0],
              subject, message)
     try:
-        smtpObj = smtplib.SMTP(SMTP_SERVER)
-        smtpObj.sendmail(sender, receivers, email)
+        smtp_obj = smtplib.SMTP(SMTP_SERVER)
+        smtp_obj.sendmail(sender, receivers, email)
         log.info("Successfully sent email")
     except OSError:
         log.error("Error: unable to send email")
@@ -63,22 +62,19 @@ def build_grades():
     g = []
     rows = b.find_by_xpath(XPATH_PREFIX).find_by_tag('tr')
 
-    global rows_len
-    rows_len = len(rows)
     for i in range(len(rows)):
         cells = rows[i].find_by_tag('td')
-        
-        # Rows containing grades contain exactly 11 cells
+        # grade rows contain exactly 11 cells
         if len(cells) != 11:
             continue
-        # Ignore rows which have class averages (cell #11)
-        text = cells[10].value.strip()
-        if text != '':
+        # skip rows that already have averages
+        avg = cells[10].value.strip()
+        if avg != '':
             continue
 
+
+        course_code = cells[1].value
         # Fix for multi-term courses
-        printable = set(string.printable)
-        course_code = filter(lambda x: x in printable, cells[1].value)
         if len(course_code) > 10:
             course_code = course_code[:10]
 
@@ -98,7 +94,7 @@ def compare_grades(g):
         grade = g[i]
         course = grade[0]
         old_grade = grade[1]
-        old_avg = grade[2]
+        old_avg = grade[2] #TODO: can be removed?
 
         c = b.find_by_xpath('//td[contains(.,\"' + course + '\")]')
         course_row = c.find_by_xpath('.//ancestor::tr')
@@ -140,14 +136,12 @@ try:
         time.sleep(DELAY)
         b.visit(MINERVA_HOME)
         if b.is_element_not_present_by_id('mcg_un'):
-            log.warning('Minerva home missing login, trying again in 30 minutes')
+            log.warning('Minerva home missing login, trying again in %d seconds' % DELAY)
             continue
         b.find_by_id('mcg_un').fill(credentials[0])
         b.find_by_id('mcg_pw').fill(credentials[1])
         b.find_by_id('mcg_un_submit').click()
         b.visit(MINERVA_TRANSCRIPT)
-        # if len(b.find_by_xpath(XPATH_PREFIX).find_by_tag('tr')) > rows_len:
-        #     grades = build_grades()
         compare_grades(grades)
         log.info('Update complete')
         b.visit(MINERVA_LOGOUT)
