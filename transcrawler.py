@@ -1,7 +1,7 @@
-import getpass, smtplib, sys, time, traceback, string
+import getpass, smtplib, sys, time, traceback
 import logging as log
 from splinter import Browser
-
+from email.mime.text import MIMEText
 # 1. pyhton transcrawler.py
 # 2. Ctrl+Z
 # 3. bg
@@ -38,21 +38,17 @@ def authenticate():
 credentials = authenticate()
 
 
-def send_mail(receivers, receiver_names, message,
+def send_mail(receiver, content,
               sender='khalabi@jarvis.inventico.com', sender_name='Transcrawler Service',
               subject='Transcript Update'):
-    email = """From: %s <%s>
-    To: %s <%s>
-    Subject: %s
 
-    %s
-    """ % \
-            (sender_name, sender,
-             receiver_names[0], receivers[0],
-             subject, message)
+    msg = MIMEText(content, 'plain')
+    msg['Subject'] = subject
+    msg['From'] = '%s <%s>' % (sender_name, sender)
+
     try:
         smtp_obj = smtplib.SMTP(SMTP_SERVER)
-        smtp_obj.sendmail(sender, receivers, email)
+        smtp_obj.sendmail(sender, receiver, msg.as_string())
         log.info("Successfully sent email")
     except OSError:
         log.error("Error: unable to send email")
@@ -72,7 +68,6 @@ def build_grades():
         if avg != '':
             continue
 
-
         course_code = cells[1].value
         # Fix for multi-term courses
         if len(course_code) > 10:
@@ -84,6 +79,21 @@ def build_grades():
     # Don't care about AAAA 100
     g.remove([u'AAAA 100', u'CO', u' '])
     log.info('Removed AAAA 100')
+
+    # Send out a confirmation email
+    email = "Updates to the following courses are being monitored:\n\n"
+
+    for course in g:
+        email += course[0] + ": "
+        if course[1] != ' ':
+            email += "Class average\n"
+        else:
+            email += "Grade and class average\n"
+
+    email += "\nAny changes will be sent out within " \
+             + str(DELAY/60) + " minutes.\nThank you for using the Transcrawler service."
+
+    send_mail(credentials[0], email, subject="Confirmation")
     return g
 
 
@@ -117,7 +127,7 @@ def compare_grades(g):
     if len(update) > 0:
         email = 'The following transcript changes have been detected: \n\n' + update + '\n' \
                 + 'Log into minerva to confirm these updates'
-        send_mail([credentials[0]], ["Kareem Halabi"], email)
+        send_mail(credentials[0], email)
         log.info('New List:\n%s' % str(grades))
 
 
@@ -154,4 +164,4 @@ except Exception:
         message += t
     message += '\n' + str(ex)
     log.error(message)
-    send_mail([credentials[0]], ["Kareem Halabi"], message)
+    send_mail(credentials[0], message)
